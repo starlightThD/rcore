@@ -1,0 +1,70 @@
+/// 线程工作函数
+fn thread_work() {
+    let count = unsafe { COUNT };
+    for _ in 0..PER_THREAD {
+        let mut t = 2usize;
+        
+        // 执行计算密集型操作
+        for _ in 0..count {
+            t = t * t % 10007;
+        }
+        
+        // 更新共享变量
+        unsafe {
+            let a_ptr = addr_of_mut!(A);
+            let cur = a_ptr.read_volatile();
+            a_ptr.write_volatile(cur + 1);
+        }
+        
+        // 主动让出CPU
+        yield_thread();
+    }
+}
+
+#[no_mangle]
+pub fn main(argc: usize, argv: &[&str]) -> i32 {
+    // 解析命令行参数
+    let count: usize;
+    if argc == 1 {
+        count = THREAD_COUNT;
+    } else if argc == 2 {
+        count = argv[1].to_string().parse::<usize>().unwrap();
+    } else {
+        println!(
+            "ERROR in argv, argc is {}, argv[0] {} , argv[1] {} , argv[2] {}",
+            argc, argv[0], argv[1], argv[2]
+        );
+        exit(-1);
+    }
+    
+    // 设置全局参数
+    unsafe {
+        COUNT = count;
+    }
+    
+    let start = get_time();
+    
+    // 创建用户态线程运行时
+    let mut runtime = Runtime::new();
+    runtime.init();
+    
+    // 创建多个工作线程
+    for _ in 0..THREAD_COUNT {
+        runtime.spawn(thread_work);
+    }
+    
+    // 运行所有线程
+    runtime.run();
+    
+    // 计算执行时间
+    let time_cost = get_time() - start;
+    
+    // 输出结果
+    unsafe {
+        println!("time cost is {}ms", time_cost);
+        println!("Final value of A: {}", A);
+        println!("Expected value: {}", PER_THREAD * THREAD_COUNT);
+    }
+    
+    0
+}
